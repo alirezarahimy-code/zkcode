@@ -13,7 +13,7 @@ Option Explicit
 
 Public Sub monitor_Tick()
     On Error GoTo ErrHandler
-        
+    
     If Not MonitorRunning Then Exit Sub
     If MonitorBusy Then Exit Sub
     

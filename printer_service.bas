@@ -34,7 +34,7 @@ Public Function printer_PrintReceipt(ByVal empID As String, ByVal empName As Str
         Exit Function
     End If
     
-    ' ارسال به چاپگر
+    ' ار��ال به چاپگر
     If printer_SendToPrinter(receiptText, receiptID) Then
         ' موفق
         Call printer_SetPrintStatus(receiptID, PRINT_STATUS_SUCCESS)
