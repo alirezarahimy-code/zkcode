@@ -15,54 +15,40 @@ Public Function printer_PrintReceipt(ByVal empID As String, ByVal empName As Str
                                      ByVal mealType As String, ByVal mealListID As Long, _
                                      ByVal receiptID As Long, ByVal deviceIP As String) As Boolean
     On Error GoTo ErrHandler
-    
-    Dim receiptText As String
+        Dim receiptText As String
     Dim printStatus As String
-    
-    empID = Trim$(empID)
+        empID = Trim$(empID)
     empName = Trim$(empName)
     mealType = Trim$(mealType)
-    
-    If Len(empID) = 0 Or Len(empName) = 0 Then Exit Function
+        If Len(empID) = 0 Or Len(empName) = 0 Then Exit Function
     If receiptID <= 0 Then Exit Function
-    
-    ' ساخت متن فیش
+        ' ساخت متن فیش
     receiptText = printer_BuildReceiptText(empID, empName, mealType, mealListID)
-    
-    If Len(receiptText) = 0 Then
+        If Len(receiptText) = 0 Then
         Call printer_SetPrintStatus(receiptID, PRINT_STATUS_FAILED)
         Exit Function
     End If
-    
-    ' ار��ال به چاپگر
+        ' ارسال به چاپگر
     If printer_SendToPrinter(receiptText, receiptID) Then
         ' موفق
         Call printer_SetPrintStatus(receiptID, PRINT_STATUS_SUCCESS)
-        
-        ' بروزرسانی تاریخ چاپ
-        Call printer_UpdatePrintDateTime(receiptID, Now())
-        
-        Call LogSystemEvent("printer_PrintReceipt", _
+                ' بروزرسانی تاریخ چاپ (delegated to receipt_service)
+        Call receipt_UpdatePrintDateTime(receiptID, Now())
+                Call LogSystemEvent("printer_PrintReceipt", _
                            "فیش چاپ شد: ReceiptID=" & CStr(receiptID) & " Emp=" & empID)
-        
-        printer_PrintReceipt = True
+                printer_PrintReceipt = True
     Else
         ' ناموفق
         Call printer_SetPrintStatus(receiptID, PRINT_STATUS_FAILED)
-        
-        Call LogSystemEvent("printer_PrintReceipt", _
+                Call LogSystemEvent("printer_PrintReceipt", _
                            "چاپ ناموفق: ReceiptID=" & CStr(receiptID) & " Emp=" & empID)
-        
-        printer_PrintReceipt = False
+                printer_PrintReceipt = False
     End If
-    
-    Exit Function
-    
-ErrHandler:
+        Exit Function
+    ErrHandler:
     Call LogError("printer_PrintReceipt", Err.Number, Err.Description, _
                   "EmpID=" & empID & " ReceiptID=" & CStr(receiptID))
-    
-    Call printer_SetPrintStatus(receiptID, PRINT_STATUS_FAILED)
+        Call printer_SetPrintStatus(receiptID, PRINT_STATUS_FAILED)
     printer_PrintReceipt = False
 End Function
 
@@ -72,36 +58,30 @@ End Function
 
 Private Function printer_SendToPrinter(ByVal receiptText As String, ByVal receiptID As Long) As Boolean
     On Error GoTo ErrHandler
-    
-    Dim printerIP As String
+        Dim printerIP As String
     Dim printerPort As Long
     Dim printerName As String
-    
-    ' دریافت تنظیمات چاپگر از جدول
+        ' دریافت تنظیمات چاپگر از جدول
     If Not printer_GetSettings(printerIP, printerPort, printerName) Then
         Call LogError("printer_SendToPrinter", -1, "تنظیمات چاپگر یافت نشد", "")
         Exit Function
     End If
-    
-    ' اگر چاپگر Windows
+        ' اگر چاپگر Windows
     If UCase$(printerName) <> "" Then
         If printer_PrintToWindows(receiptText, printerName) Then
             printer_SendToPrinter = True
             Exit Function
         End If
     End If
-    
-    ' اگر چاپگر Socket
+        ' اگر چاپگر Socket
     If Len(Trim$(printerIP)) > 0 And printerPort > 0 Then
         If printer_PrintToSocket(receiptText, printerIP, printerPort) Then
             printer_SendToPrinter = True
             Exit Function
         End If
     End If
-    
-    Exit Function
-    
-ErrHandler:
+        Exit Function
+    ErrHandler:
     Call LogError("printer_SendToPrinter", Err.Number, Err.Description, _
                   "ReceiptID=" & CStr(receiptID))
     printer_SendToPrinter = False
@@ -114,17 +94,14 @@ End Function
 Private Function printer_PrintToSocket(ByVal receiptText As String, ByVal printerIP As String, _
                                        ByVal printerPort As Long) As Boolean
     On Error GoTo ErrHandler
-    
-    ' فراخوانی print_helper_client برای ارسال واقعی
+        ' فراخوانی print_helper_client برای ارسال واقعی
     If ph_SendToPrinterSocket(printerIP, printerPort, receiptText, 0) Then
         printer_PrintToSocket = True
     Else
         printer_PrintToSocket = False
     End If
-    
-    Exit Function
-    
-ErrHandler:
+        Exit Function
+    ErrHandler:
     Call LogError("printer_PrintToSocket", Err.Number, Err.Description, _
                   printerIP & ":" & CStr(printerPort))
     printer_PrintToSocket = False
@@ -142,34 +119,7 @@ Public Function printer_SetPrintStatus(ByVal receiptID As Long, ByVal status As 
     printer_SetPrintStatus = receipt_SetPrintStatus(receiptID, status, "")
 End Function
 
-' تابع: printer_UpdatePrintDateTime (حفظ رفتار قبلی)
+' تابع: printer_UpdatePrintDateTime (delegated to receipt_service)
 Public Function printer_UpdatePrintDateTime(ByVal receiptID As Long, ByVal printDT As Date) As Boolean
-    On Error GoTo ErrHandler
-    
-    Dim db As DAO.Database
-    Dim rs As DAO.Recordset
-    Dim sql As String
-    
-    If receiptID <= 0 Then Exit Function
-    
-    Set db = CurrentDb()
-    sql = "SELECT PrintDateTime FROM " & TABLE_RECEIPTS & " WHERE ReceiptID=" & CStr(receiptID)
-    Set rs = db.OpenRecordset(sql, dbOpenDynaset)
-    If rs.EOF Then Exit Function
-    rs.Edit
-    rs!PrintDateTime = printDT
-    rs.Update
-    printer_UpdatePrintDateTime = True
-
-CleanExit:
-    On Error Resume Next
-    If Not rs Is Nothing Then rs.Close
-    Set rs = Nothing
-    Set db = Nothing
-    Exit Function
-
-ErrHandler:
-    Call LogError("printer_UpdatePrintDateTime", Err.Number, Err.Description, CStr(receiptID))
-    printer_UpdatePrintDateTime = False
-    Resume CleanExit
+    printer_UpdatePrintDateTime = receipt_UpdatePrintDateTime(receiptID, printDT)
 End Function
