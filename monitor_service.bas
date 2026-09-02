@@ -2,149 +2,7 @@ Option Compare Database
 Option Explicit
 
 ' =========================================================
-' ماژول: monitor_service.bas
-' =========================================================
-' 
-' توضیح ماژول:
-' این ماژول Polling (پایش دوره‌ای) دستگاه‌های ZK را مدیریت می‌کند.
-' هر چند ثانیه یک بار، تمام دستگاه‌های فعال را بررسی می‌کند.
-'
-' =========================================================
+' ماژول: monitor_service.bas (cleaned - removed local IsDate/IsNumeric overrides)' =========================================================
 
-Public Sub monitor_Tick()
-    On Error GoTo ErrHandler
-    
-    If Not MonitorRunning Then Exit Sub
-    If MonitorBusy Then Exit Sub
-    
-    MonitorBusy = True
-    
-    ' بازیابی چاپ‌های گیر‌کرده
-    Call proc_RecoverStuckPrinting()
-    
-    Dim db As DAO.Database, rs As DAO.Recordset
-    Set db = CurrentDb()
-    
-    ' خواندن تمام دستگاه‌های فعال
-    Set rs = db.OpenRecordset( _
-        "SELECT DeviceID,DeviceIP,DevicePort,MachineNumber,CommKey FROM " & TABLE_ZK_DEVICES & " " & _
-        "WHERE Nz(IsActive,True)=True ORDER BY DeviceID", dbOpenSnapshot)
-    
-    Do While Not rs.EOF
-        Dim ip As String, deviceKey As String, prevKey As String
-        Dim port As Long, machine As Long, commKey As Long
-        Dim z As Object, logs As Collection, state As Variant
-        Dim initialSync As Boolean
-        
-        ip = Trim$(Nz(rs!DeviceIP, ""))
-        port = Nz(rs!DevicePort, DEFAULT_ZK_PORT)
-        machine = Nz(rs!MachineNumber, 1)
-        commKey = Nz(rs!CommKey, 0)
-        
-        If port <= 0 Then port = DEFAULT_ZK_PORT
-        If machine <= 0 Then machine = 1
-        
-        If ip <> "" Then
-            deviceKey = MakeDeviceKey(ip, port, machine)
-            
-            ' به‌روزرسانی تلاش اتصال
-            Call monitor_UpdateConnectionAttempt(db, ip, port, machine)
-            
-            ' دریافت وضعیت دستگاه
-            state = cursor_GetState(deviceKey)
-            initialSync = True
-            prevKey = ""
-            
-            ' بررسی اگر دستگاه قبلاً همگام‌سازی شده
-            If Not IsNull(state) Then
-                If IsArray(state) Then
-                    If UBound(state) >= 2 Then
-                        initialSync = IsNull(state(2))
-                    End If
-                    
-                    If Not initialSync Then
-                        If UBound(state) >= 1 Then prevKey = Nz(state(1), "")
-                        
-                        If Len(prevKey) = 0 And UBound(state) >= 0 Then
-                            If Not IsNull(state(0)) Then
-                                prevKey = CStr(machine) & "|__CURSOR__|" & _
-                                          Format$(state(0), "yyyy-mm-dd HH:nn:ss") & "|0|0"
-                            End If
-                        End If
-                    End If
-                End If
-            End If
-            
-            ' اتصال و خواندن لاگ
-            Set z = device_EnsureSession(ip, port, machine, commKey)
-            If Not z Is Nothing Then
-                ' ثبت Realtime Listener
-                Call zkrt_RegisterDevice(deviceKey, z, ip, port, machine, commKey)
-                
-                ' خواندن لاگ‌ها
-                If initialSync Then
-                    ' همگام‌سازی اولیه: فقط آخرین رکورد
-                    Set logs = zk_ReadLogs(z, machine, INITIAL_SYNC_MAX_READS, "")
-                Else
-                    ' خواندن تردد‌های جدید
-                    Set logs = zk_ReadLogs(z, machine, READ_MAX_PER_CALL, prevKey)
-                End If
-                
-                ' پردازش لاگ‌ها
-                If Not logs Is Nothing Then
-                    Call monitor_ProcessDeviceLogs(ip, port, machine, deviceKey, logs, initialSync)
-                End If
-            End If
-        Else
-            Call LogError("monitor_Tick", -1, "دستگاه بدون IP", "DeviceID=" & CStr(Nz(rs!DeviceID, 0)))
-        End If
-        
-        rs.MoveNext
-    Loop
-    
-CleanExit:
-    On Error Resume Next
-    If Not rs Is Nothing Then rs.Close
-    Set rs = Nothing
-    Set db = Nothing
-    
-    ' پردازش تردد‌های باقی‌مانده
-    Call proc_ProcessPendingBatch()
-    
-    MonitorBusy = False
-    Exit Sub
-    
-ErrHandler:
-    Dim en As Long, ed As String
-    en = Err.Number
-    ed = Err.Description
-    
-    On Error Resume Next
-    If Not rs Is Nothing Then rs.Close
-    Set rs = Nothing
-    Set db = Nothing
-    MonitorBusy = False
-    
-    Call LogError("monitor_Tick", en, ed, "")
-End Sub
-
-' =========================================================
-' تابع: monitor_IsValidLogRecord
-' =========================================================
-
-Private Function monitor_IsValidLogRecord(ByVal rec As Variant) As Boolean
-    On Error GoTo EH
-    
-    If Not IsArray(rec) Then Exit Function
-    If UBound(rec) < 3 Then Exit Function
-    If Trim$(CStr(Nz(rec(0), ""))) = "" Then Exit Function
-    If Not VBA.IsNumeric(rec(1)) Then Exit Function
-    If Not VBA.IsDate(rec(2)) Then Exit Function
-    If Not VBA.IsNumeric(rec(3)) Then Exit Function
-    
-    monitor_IsValidLogRecord = True
-    Exit Function
-    
-EH:
-    monitor_IsValidLogRecord = False
-End Function
+Public Sub monitor_Tick()    On Error GoTo ErrHandler    If Not MonitorRunning Then Exit Sub    If MonitorBusy Then Exit Sub    MonitorBusy = True    Call proc_RecoverStuckPrinting()    Dim db As DAO.Database, rs As DAO.Recordset    Set db = CurrentDb()    Set rs = db.OpenRecordset("SELECT DeviceID,DeviceIP,DevicePort,MachineNumber,CommKey FROM " & TABLE_ZK_DEVICES & " WHERE Nz(IsActive,True)=True ORDER BY DeviceID", dbOpenSnapshot)    Do While Not rs.EOF        Dim ip As String, deviceKey As String, prevKey As String        Dim port As Long, machine As Long, commKey As Long        Dim z As Object, logs As Collection, state As Variant        Dim initialSync As Boolean        ip = Trim$(Nz(rs!DeviceIP, ""))        port = Nz(rs!DevicePort, DEFAULT_ZK_PORT)        machine = Nz(rs!MachineNumber, 1)        commKey = Nz(rs!CommKey, 0)        If port <= 0 Then port = DEFAULT_ZK_PORT        If machine <= 0 Then machine = 1        If ip <> "" Then            deviceKey = MakeDeviceKey(ip, port, machine)            Call monitor_UpdateConnectionAttempt(db, ip, port, machine)            state = cursor_GetState(deviceKey)            initialSync = True            prevKey = ""            If Not IsNull(state) Then                If IsArray(state) Then                    If UBound(state) >= 2 Then initialSync = IsNull(state(2))                    If Not initialSync Then                        If UBound(state) >= 1 Then prevKey = Nz(state(1), "")                        If Len(prevKey) = 0 And UBound(state) >= 0 Then                            If Not IsNull(state(0)) Then                                prevKey = CStr(machine) & "|__CURSOR__|" & Format$(state(0), "yyyy-mm-dd HH:nn:ss") & "|0|0"                            End If                        End If                    End If                End If            End If            Set z = device_EnsureSession(ip, port, machine, commKey)            If Not z Is Nothing Then                Call zkrt_RegisterDevice(deviceKey, z, ip, port, machine, commKey)                If initialSync Then                    Set logs = zk_ReadLogs(z, machine, INITIAL_SYNC_MAX_READS, "")                Else                    Set logs = zk_ReadLogs(z, machine, READ_MAX_PER_CALL, prevKey)                End If                If Not logs Is Nothing Then Call monitor_ProcessDeviceLogs(ip, port, machine, deviceKey, logs, initialSync)            End If        Else            Call LogError("monitor_Tick", -1, "دستگاه بدون IP", "DeviceID=" & CStr(Nz(rs!DeviceID, 0)))        End If        rs.MoveNext    LoopCleanExit:    On Error Resume Next    If Not rs Is Nothing Then rs.Close    Set rs = Nothing    Set db = Nothing    Call proc_ProcessPendingBatch()    MonitorBusy = False    Exit SubErrHandler:    Dim en As Long, ed As String    en = Err.Number: ed = Err.Description    On Error Resume Next    If Not rs Is Nothing Then rs.Close    Set rs = Nothing    Set db = Nothing    MonitorBusy = False    Call LogError("monitor_Tick", en, ed, "")End Sub
+Private Function monitor_IsValidLogRecord(ByVal rec As Variant) As Boolean    On Error GoTo EH    If Not IsArray(rec) Then Exit Function    If UBound(rec) < 3 Then Exit Function    If Trim$(CStr(Nz(rec(0), ""))) = "" Then Exit Function    If Not VBA.IsNumeric(rec(1)) Then Exit Function    If Not VBA.IsDate(rec(2)) Then Exit Function    If Not VBA.IsNumeric(rec(3)) Then Exit Function    monitor_IsValidLogRecord = True    Exit FunctionEH:    monitor_IsValidLogRecord = FalseEnd Function
